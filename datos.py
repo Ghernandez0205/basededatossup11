@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 import os
 
-# Configurar la ruta de la base de datos
+# Configurar la ruta de la base de datos normalizada
 DB_PATH = "C:\\Users\\sup11\\OneDrive\\Attachments\\Documentos\\Interfaces de phyton\\Base de datos\\base_datos_29D_normalizada.sqlite"
 
 # Conectar a la base de datos
@@ -43,6 +43,13 @@ else:
     escuelas_df = pd.DataFrame()
     st.error("❌ La tabla 'escuelas' no existe en la base de datos.")
 
+# Cargar claves presupuestales
+if check_table_exists("claves_presupuestales"):
+    claves_pres_df = load_data("SELECT * FROM claves_presupuestales")
+else:
+    claves_pres_df = pd.DataFrame()
+    st.error("❌ La tabla 'claves_presupuestales' no existe en la base de datos.")
+
 # Cargar relación docentes-escuelas
 if check_table_exists("docente_escuela"):
     docente_escuela_df = load_data("SELECT * FROM docente_escuela")
@@ -76,46 +83,16 @@ if menu == "Dashboard":
 
 elif menu == "Gestión de Docentes":
     st.subheader("📋 Lista de Docentes")
-    st.dataframe(docentes_df)
+    docentes_completo_df = docentes_df.merge(claves_pres_df, on="RFC", how="left")
+    st.dataframe(docentes_completo_df)
     
-    with st.form("add_docente"):
-        st.write("Agregar Nuevo Docente")
-        rfc = st.text_input("RFC")
-        nombre = st.text_input("Nombre Completo")
-        nivel = st.selectbox("Nivel Educativo", docentes_df["Nivel_Educativo"].unique() if not docentes_df.empty else [])
-        escuela = st.selectbox("Escuela", escuelas_df["Nombre_Escuela"].unique() if not escuelas_df.empty else [])
-        clave_pres = st.text_input("Clave Presupuestal")
-        if st.form_submit_button("Guardar Docente"):
-            conn.execute("INSERT INTO personal_educativo (RFC, Nombre, Nivel_Educativo, Clave_Presupuestal) VALUES (?, ?, ?, ?)", (rfc, nombre, nivel, clave_pres))
-            conn.commit()
-            st.success("Docente agregado correctamente")
-    
-    if not docentes_df.empty:
-        eliminar = st.selectbox("Seleccionar Docente a Eliminar", docentes_df["RFC"])
-        if st.button("Eliminar Docente"):
-            conn.execute("DELETE FROM personal_educativo WHERE RFC = ?", (eliminar,))
-            conn.commit()
-            st.warning("Docente eliminado")
-
 elif menu == "Gestión de Escuelas":
     st.subheader("🏫 Gestión de Escuelas")
     st.dataframe(escuelas_df)
     
-    with st.form("add_escuela"):
-        st.write("Agregar Nueva Escuela")
-        nombre_escuela = st.text_input("Nombre de la Escuela")
-        director = st.text_input("Director")
-        direccion = st.text_input("Dirección")
-        zona = st.text_input("Zona Escolar")
-        sector = st.number_input("Sector", min_value=1, step=1)
-        if st.form_submit_button("Guardar Escuela"):
-            conn.execute("INSERT INTO escuelas (Nombre_Escuela, Director, Direccion, Zona_Escolar, Sector) VALUES (?, ?, ?, ?, ?)", (nombre_escuela, director, direccion, zona, sector))
-            conn.commit()
-            st.success("Escuela agregada correctamente")
-    
 elif menu == "Gestión de Claves Presupuestales":
     st.subheader("🔑 Gestión de Claves Presupuestales")
-    st.dataframe(docente_escuela_df)
+    st.dataframe(claves_pres_df)
     
 elif menu == "Historial de Auditoría":
     st.subheader("📜 Historial de Auditoría")
@@ -133,19 +110,7 @@ elif menu == "Exportación de Datos":
     
     st.download_button(
         label="📥 Descargar Excel",
-        data=export_excel(docentes_df),
+        data=export_excel(docentes_completo_df),
         file_name="datos_filtrados.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    
-    def export_sqlite(dataframe, db_name="exported_db.sqlite"):
-        export_path = os.path.join(os.getcwd(), db_name)
-        conn_export = sqlite3.connect(export_path)
-        dataframe.to_sql("personal_educativo", conn_export, if_exists="replace", index=False)
-        conn_export.close()
-        return export_path
-    
-    if st.button("📤 Exportar a SQLite"):
-        sqlite_file = export_sqlite(docentes_df)
-        with open(sqlite_file, "rb") as f:
-            st.download_button("📥 Descargar SQLite", f, file_name="datos_filtrados.sqlite")
