@@ -6,7 +6,7 @@ from io import BytesIO
 import os
 
 # Configurar la ruta de la base de datos
-DB_PATH = "C:\\Users\\sup11\\OneDrive\\Attachments\\Documentos\\Interfaces de phyton\\Base de datos\\base_datos_29D.sqlite"
+DB_PATH = "C:\\Users\\sup11\\OneDrive\\Attachments\\Documentos\\Interfaces de phyton\\Base de datos\\base_datos_29D_normalizada.sqlite"
 
 # Conectar a la base de datos
 @st.cache_resource
