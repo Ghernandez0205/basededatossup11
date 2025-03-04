@@ -6,7 +6,7 @@ from io import BytesIO
 import os
 
 # Configurar la ruta de la base de datos normalizada
-DB_PATH = "C:\\Users\\sup11\\OneDrive\\Attachments\\Documentos\\Interfaces de phyton\\Base de datos\\base_datos_29D_normalizada.sqlite"
+DB_PATH = "/mnt/data/base_datos_29D_normalizada.sqlite"
 
 # Conectar a la base de datos
 @st.cache_resource
@@ -57,12 +57,12 @@ else:
     docente_escuela_df = pd.DataFrame()
     st.error("❌ La tabla 'docente_escuela' no existe en la base de datos.")
 
-# Cargar historial de auditoría
+# Cargar historial de auditoría solo si existe
 if check_table_exists("auditoria_cambios"):
     auditoria_df = load_data("SELECT * FROM auditoria_cambios")
 else:
     auditoria_df = pd.DataFrame()
-    st.error("❌ La tabla 'auditoria_cambios' no existe en la base de datos.")
+    st.warning("⚠️ La tabla 'auditoria_cambios' no existe en la base de datos. La auditoría no estará disponible.")
 
 # Configurar la interfaz de Streamlit
 st.title("📌 Gestión de Docentes y Escuelas")
@@ -96,7 +96,10 @@ elif menu == "Gestión de Claves Presupuestales":
     
 elif menu == "Historial de Auditoría":
     st.subheader("📜 Historial de Auditoría")
-    st.dataframe(auditoria_df)
+    if not auditoria_df.empty:
+        st.dataframe(auditoria_df)
+    else:
+        st.warning("No hay registros de auditoría disponibles.")
     
 elif menu == "Exportación de Datos":
     st.subheader("📥 Exportación de Datos")
