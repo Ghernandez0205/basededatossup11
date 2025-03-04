@@ -15,25 +15,47 @@ def get_connection():
 
 conn = get_connection()
 
+# Función para verificar si una tabla existe
+def check_table_exists(table_name):
+    query = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';"
+    result = pd.read_sql(query, conn)
+    return not result.empty
+
 # Función para cargar datos de la base de datos
 def load_data(query):
-    return pd.read_sql(query, conn)
+    try:
+        return pd.read_sql(query, conn)
+    except Exception as e:
+        st.error(f"Error al ejecutar la consulta SQL: {e}")
+        return pd.DataFrame()
 
 # Cargar datos de docentes
-docentes_query = "SELECT * FROM personal_educativo"
-docentes_df = load_data(docentes_query)
+if check_table_exists("personal_educativo"):
+    docentes_df = load_data("SELECT * FROM personal_educativo")
+else:
+    docentes_df = pd.DataFrame()
+    st.error("❌ La tabla 'personal_educativo' no existe en la base de datos.")
 
 # Cargar datos de escuelas
-escuelas_query = "SELECT * FROM escuelas"
-escuelas_df = load_data(escuelas_query)
+if check_table_exists("escuelas"):
+    escuelas_df = load_data("SELECT * FROM escuelas")
+else:
+    escuelas_df = pd.DataFrame()
+    st.error("❌ La tabla 'escuelas' no existe en la base de datos.")
 
 # Cargar relación docentes-escuelas
-docente_escuela_query = "SELECT * FROM docente_escuela"
-docente_escuela_df = load_data(docente_escuela_query)
+if check_table_exists("docente_escuela"):
+    docente_escuela_df = load_data("SELECT * FROM docente_escuela")
+else:
+    docente_escuela_df = pd.DataFrame()
+    st.error("❌ La tabla 'docente_escuela' no existe en la base de datos.")
 
 # Cargar historial de auditoría
-auditoria_query = "SELECT * FROM auditoria_cambios"
-auditoria_df = load_data(auditoria_query)
+if check_table_exists("auditoria_cambios"):
+    auditoria_df = load_data("SELECT * FROM auditoria_cambios")
+else:
+    auditoria_df = pd.DataFrame()
+    st.error("❌ La tabla 'auditoria_cambios' no existe en la base de datos.")
 
 # Configurar la interfaz de Streamlit
 st.title("📌 Gestión de Docentes y Escuelas")
@@ -43,12 +65,14 @@ menu = st.sidebar.radio("Menú", ["Dashboard", "Gestión de Docentes", "Gestión
 
 if menu == "Dashboard":
     st.subheader("📊 Resumen de Datos")
-    st.write("Métricas generales y gráficos estadísticos")
-    fig, ax = plt.subplots()
-    docentes_df["Nivel_Educativo"].value_counts().plot(kind="bar", ax=ax, color=["#0047AB", "#E63946", "#F4A261"])
-    ax.set_title("Distribución de Docentes por Nivel Educativo")
-    ax.set_ylabel("Cantidad")
-    st.pyplot(fig)
+    if not docentes_df.empty:
+        fig, ax = plt.subplots()
+        docentes_df["Nivel_Educativo"].value_counts().plot(kind="bar", ax=ax, color=["#0047AB", "#E63946", "#F4A261"])
+        ax.set_title("Distribución de Docentes por Nivel Educativo")
+        ax.set_ylabel("Cantidad")
+        st.pyplot(fig)
+    else:
+        st.warning("No hay datos disponibles para mostrar.")
 
 elif menu == "Gestión de Docentes":
     st.subheader("📋 Lista de Docentes")
@@ -58,19 +82,20 @@ elif menu == "Gestión de Docentes":
         st.write("Agregar Nuevo Docente")
         rfc = st.text_input("RFC")
         nombre = st.text_input("Nombre Completo")
-        nivel = st.selectbox("Nivel Educativo", docentes_df["Nivel_Educativo"].unique())
-        escuela = st.selectbox("Escuela", escuelas_df["Nombre_Escuela"].unique())
+        nivel = st.selectbox("Nivel Educativo", docentes_df["Nivel_Educativo"].unique() if not docentes_df.empty else [])
+        escuela = st.selectbox("Escuela", escuelas_df["Nombre_Escuela"].unique() if not escuelas_df.empty else [])
         clave_pres = st.text_input("Clave Presupuestal")
         if st.form_submit_button("Guardar Docente"):
             conn.execute("INSERT INTO personal_educativo (RFC, Nombre, Nivel_Educativo, Clave_Presupuestal) VALUES (?, ?, ?, ?)", (rfc, nombre, nivel, clave_pres))
             conn.commit()
             st.success("Docente agregado correctamente")
     
-    eliminar = st.selectbox("Seleccionar Docente a Eliminar", docentes_df["RFC"])
-    if st.button("Eliminar Docente"):
-        conn.execute("DELETE FROM personal_educativo WHERE RFC = ?", (eliminar,))
-        conn.commit()
-        st.warning("Docente eliminado")
+    if not docentes_df.empty:
+        eliminar = st.selectbox("Seleccionar Docente a Eliminar", docentes_df["RFC"])
+        if st.button("Eliminar Docente"):
+            conn.execute("DELETE FROM personal_educativo WHERE RFC = ?", (eliminar,))
+            conn.commit()
+            st.warning("Docente eliminado")
 
 elif menu == "Gestión de Escuelas":
     st.subheader("🏫 Gestión de Escuelas")
