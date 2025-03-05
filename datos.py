@@ -43,6 +43,12 @@ def update_database(table_name, df):
     df.to_sql(table_name, conn, if_exists='replace', index=False)
     conn.commit()
 
+# Función para generar enlace de descarga de la base de datos
+def download_database():
+    with open(DB_PATH, "rb") as f:
+        db_bytes = f.read()
+    return db_bytes
+
 # Configurar la interfaz de Streamlit
 st.title("📌 Gestión de Docentes y Escuelas")
 
@@ -90,3 +96,9 @@ if menu == "Gestión de Escuelas":
         escuelas_df = escuelas_df[~escuelas_df['nombre'].isin([row['nombre'] for row in selected_rows])]
         update_database("escuelas", escuelas_df)
         st.success("✅ Escuela eliminada exitosamente.")
+
+    # Botón para descargar la base de datos
+    st.subheader("📥 Descargar Base de Datos")
+    db_bytes = download_database()
+    st.download_button(label="Descargar Base de Datos", data=db_bytes, file_name="base_datos_actualizada.sqlite", mime="application/octet-stream")
+
