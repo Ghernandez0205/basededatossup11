@@ -4,6 +4,7 @@ import sqlite3
 import matplotlib.pyplot as plt
 from io import BytesIO
 import os
+from st_aggrid import AgGrid, GridOptionsBuilder
 
 # Configurar la ruta de la base de datos normalizada
 DB_PATH = "/mnt/data/base_datos_29D_normalizada.sqlite"
@@ -29,13 +30,6 @@ def load_data(query):
         st.error(f"Error al ejecutar la consulta SQL: {e}")
         return pd.DataFrame()
 
-# Cargar datos de docentes
-if check_table_exists("personal_educativo"):
-    docentes_df = load_data("SELECT * FROM personal_educativo")
-else:
-    docentes_df = pd.DataFrame()
-    st.error("❌ La tabla 'personal_educativo' no existe en la base de datos.")
-
 # Cargar datos de escuelas
 if check_table_exists("escuelas"):
     escuelas_df = load_data("SELECT * FROM escuelas")
@@ -43,77 +37,56 @@ else:
     escuelas_df = pd.DataFrame()
     st.error("❌ La tabla 'escuelas' no existe en la base de datos.")
 
-# Cargar claves presupuestales
-if check_table_exists("claves_presupuestales"):
-    claves_pres_df = load_data("SELECT * FROM claves_presupuestales")
-else:
-    claves_pres_df = pd.DataFrame()
-    st.error("❌ La tabla 'claves_presupuestales' no existe en la base de datos.")
-
-# Cargar relación docentes-escuelas
-if check_table_exists("docente_escuela"):
-    docente_escuela_df = load_data("SELECT * FROM docente_escuela")
-else:
-    docente_escuela_df = pd.DataFrame()
-    st.error("❌ La tabla 'docente_escuela' no existe en la base de datos.")
-
-# Cargar historial de auditoría solo si existe
-if check_table_exists("auditoria_cambios"):
-    auditoria_df = load_data("SELECT * FROM auditoria_cambios")
-else:
-    auditoria_df = pd.DataFrame()
-    st.warning("⚠️ La tabla 'auditoria_cambios' no existe en la base de datos. La auditoría no estará disponible.")
+# Función para actualizar la base de datos
+def update_database(table_name, df):
+    conn = get_connection()
+    df.to_sql(table_name, conn, if_exists='replace', index=False)
+    conn.commit()
 
 # Configurar la interfaz de Streamlit
 st.title("📌 Gestión de Docentes y Escuelas")
 
 # Barra lateral para navegación
-menu = st.sidebar.radio("Menú", ["Dashboard", "Gestión de Docentes", "Gestión de Escuelas", "Gestión de Claves Presupuestales", "Historial de Auditoría", "Exportación de Datos"])
+menu = st.sidebar.radio("Menú", ["Dashboard", "Gestión de Escuelas"])
 
-if menu == "Dashboard":
-    st.subheader("📊 Resumen de Datos")
-    if not docentes_df.empty:
-        fig, ax = plt.subplots()
-        docentes_df["Nivel_Educativo"].value_counts().plot(kind="bar", ax=ax, color=["#0047AB", "#E63946", "#F4A261"])
-        ax.set_title("Distribución de Docentes por Nivel Educativo")
-        ax.set_ylabel("Cantidad")
-        st.pyplot(fig)
-    else:
-        st.warning("No hay datos disponibles para mostrar.")
-
-elif menu == "Gestión de Docentes":
-    st.subheader("📋 Lista de Docentes")
-    docentes_completo_df = docentes_df.merge(claves_pres_df, on="RFC", how="left")
-    st.dataframe(docentes_completo_df)
-    
-elif menu == "Gestión de Escuelas":
+if menu == "Gestión de Escuelas":
     st.subheader("🏫 Gestión de Escuelas")
-    st.dataframe(escuelas_df)
     
-elif menu == "Gestión de Claves Presupuestales":
-    st.subheader("🔑 Gestión de Claves Presupuestales")
-    st.dataframe(claves_pres_df)
+    # Configurar la tabla editable
+    gb = GridOptionsBuilder.from_dataframe(escuelas_df)
+    gb.configure_default_column(editable=True)
+    gb.configure_pagination()
+    gb.configure_side_bar()
+    grid_options = gb.build()
+
+    response = AgGrid(escuelas_df, gridOptions=grid_options, editable=True, fit_columns_on_grid_load=True)
+    updated_df = response['data']
     
-elif menu == "Historial de Auditoría":
-    st.subheader("📜 Historial de Auditoría")
-    if not auditoria_df.empty:
-        st.dataframe(auditoria_df)
-    else:
-        st.warning("No hay registros de auditoría disponibles.")
+    # Botón para guardar cambios en la base de datos
+    if st.button("Guardar Cambios"):
+        update_database("escuelas", updated_df)
+        st.success("✅ Los cambios han sido guardados correctamente.")
+
+    # Botón para agregar nueva escuela
+    with st.form("agregar_escuela"):
+        st.subheader("➕ Agregar Nueva Escuela")
+        nombre = st.text_input("Nombre de la escuela")
+        director = st.text_input("Nombre del director")
+        direccion = st.text_input("Dirección")
+        zona = st.text_input("Zona Escolar")
+        sector = st.text_input("Sector")
+        submit_button = st.form_submit_button("Agregar Escuela")
     
-elif menu == "Exportación de Datos":
-    st.subheader("📥 Exportación de Datos")
+    if submit_button and nombre and director and direccion and zona and sector:
+        nueva_escuela = pd.DataFrame([[nombre, director, direccion, zona, sector]],
+                                     columns=["nombre", "director", "direccion", "zona", "sector"])
+        escuelas_df = pd.concat([escuelas_df, nueva_escuela], ignore_index=True)
+        update_database("escuelas", escuelas_df)
+        st.success("✅ Escuela agregada exitosamente.")
     
-    def export_excel(dataframe):
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            dataframe.to_excel(writer, index=False, sheet_name="Datos Filtrados")
-        processed_data = output.getvalue()
-        return processed_data
-    
-    st.download_button(
-        label="📥 Descargar Excel",
-        data=export_excel(docentes_completo_df),
-        file_name="datos_filtrados.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    # Botón para eliminar una escuela seleccionada
+    selected_rows = response['selected_rows']
+    if selected_rows and st.button("Eliminar Escuela"):
+        escuelas_df = escuelas_df[~escuelas_df['nombre'].isin([row['nombre'] for row in selected_rows])]
+        update_database("escuelas", escuelas_df)
+        st.success("✅ Escuela eliminada exitosamente.")
