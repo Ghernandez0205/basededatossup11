@@ -12,9 +12,18 @@ DB_PATH = "/mnt/data/base_datos_29D_normalizada.sqlite"
 # Conectar a la base de datos
 @st.cache_resource
 def get_connection():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    try:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        return conn
+    except sqlite3.OperationalError as e:
+        st.error(f"❌ Error al conectar con la base de datos: {e}")
+        return None
 
 conn = get_connection()
+
+# Verificar si la conexión es válida
+if conn is None:
+    st.stop()
 
 # Función para verificar si una tabla existe
 def check_table_exists(table_name):
@@ -33,6 +42,8 @@ def load_data(query):
 # Cargar datos de escuelas
 if check_table_exists("escuelas"):
     escuelas_df = load_data("SELECT * FROM escuelas")
+    if escuelas_df.empty:
+        st.warning("⚠️ No hay registros en la tabla 'escuelas'.")
 else:
     escuelas_df = pd.DataFrame()
     st.error("❌ La tabla 'escuelas' no existe en la base de datos.")
@@ -40,14 +51,19 @@ else:
 # Función para actualizar la base de datos
 def update_database(table_name, df):
     conn = get_connection()
-    df.to_sql(table_name, conn, if_exists='replace', index=False)
-    conn.commit()
+    if conn is not None:
+        df.to_sql(table_name, conn, if_exists='replace', index=False)
+        conn.commit()
 
 # Función para generar enlace de descarga de la base de datos
 def download_database():
-    with open(DB_PATH, "rb") as f:
-        db_bytes = f.read()
-    return db_bytes
+    try:
+        with open(DB_PATH, "rb") as f:
+            db_bytes = f.read()
+        return db_bytes
+    except Exception as e:
+        st.error(f"❌ Error al generar la descarga: {e}")
+        return None
 
 # Configurar la interfaz de Streamlit
 st.title("📌 Gestión de Docentes y Escuelas")
@@ -100,5 +116,5 @@ if menu == "Gestión de Escuelas":
     # Botón para descargar la base de datos
     st.subheader("📥 Descargar Base de Datos")
     db_bytes = download_database()
-    st.download_button(label="Descargar Base de Datos", data=db_bytes, file_name="base_datos_actualizada.sqlite", mime="application/octet-stream")
-
+    if db_bytes:
+        st.download_button(label="Descargar Base de Datos", data=db_bytes, file_name="base_datos_actualizada.sqlite", mime="application/octet-stream")
