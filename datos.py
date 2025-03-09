@@ -1,65 +1,87 @@
-import os
-import sqlite3
 import streamlit as st
+import pandas as pd
+import sqlite3
+import os
 
-# Definir la ruta de la base de datos dentro de Streamlit
-DB_PATH = "/mnt/data/datos.sqlite"
+# 🔗 Configuración de la ruta de la base de datos SQLite
+DB_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.sqlite"
 
-# Verificar si la base de datos existe
-if not os.path.exists(DB_PATH):
-    st.warning("⚠️ No se encontró la base de datos. Creando una nueva...")
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+# 🛠️ Función para conectarse a la base de datos
+def get_connection():
+    if os.path.exists(DB_PATH):
+        return sqlite3.connect(DB_PATH, check_same_thread=False)
+    else:
+        st.error("❌ No se encontró la base de datos en la ruta especificada.")
+        return None
 
-    # Crear las tablas necesarias
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS escuelas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT NOT NULL,
-        director TEXT,
-        direccion TEXT,
-        zona TEXT,
-        sector TEXT
-    )
-    """)
+conn = get_connection()
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS personal_educativo (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT NOT NULL,
-        apellido TEXT,
-        cargo TEXT,
-        escuela_id INTEGER,
-        FOREIGN KEY (escuela_id) REFERENCES escuelas(id)
-    )
-    """)
+# Si la conexión falla, se detiene la ejecución
+if conn is None:
+    st.stop()
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS auditoria_cambios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tabla TEXT,
-        accion TEXT,
-        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
+# 📌 Función para cargar datos de una tabla
+def load_data(table_name):
+    try:
+        query = f"SELECT * FROM {table_name}"
+        df = pd.read_sql(query, conn)
+        return df
+    except Exception as e:
+        st.error(f"⚠️ Error al cargar la tabla '{table_name}': {e}")
+        return pd.DataFrame()
 
-    conn.commit()
-    conn.close()
-    st.success("✅ Base de datos creada correctamente.")
+# 📌 Obtener lista de tablas disponibles
+def get_table_names():
+    try:
+        query = "SELECT name FROM sqlite_master WHERE type='table';"
+        tables = pd.read_sql(query, conn)
+        return tables["name"].tolist()
+    except Exception as e:
+        st.error(f"⚠️ No se pudieron obtener las tablas: {e}")
+        return []
 
-# Conectar a la base de datos existente
-conn = sqlite3.connect(DB_PATH)
-st.success("✅ Conexión establecida con la base de datos.")
+# 🎨 **Diseño de la interfaz**
+st.title("📊 Gestión de Base de Datos")
 
-# Mostrar las tablas disponibles
-st.subheader("📌 Tablas en la base de datos:")
-tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
-tables = [row[0] for row in conn.execute(tables_query)]
-st.write(tables)
+# 📌 Mostrar lista de tablas disponibles
+tables = get_table_names()
+if not tables:
+    st.error("⚠️ No hay tablas disponibles en la base de datos.")
+    st.stop()
 
-# Cargar y mostrar datos de la tabla 'escuelas'
-st.subheader("🏫 Datos de la tabla 'escuelas':")
-df_escuelas = pd.read_sql("SELECT * FROM escuelas", conn)
-st.dataframe(df_escuelas)
+selected_table = st.selectbox("📌 Selecciona una tabla para visualizar:", tables)
 
-conn.close()
+# 📊 Cargar y mostrar datos en una tabla interactiva
+df = load_data(selected_table)
+if df.empty:
+    st.warning(f"⚠️ La tabla '{selected_table}' no tiene registros.")
+else:
+    st.write("📋 **Datos de la tabla seleccionada:**")
+    st.dataframe(df, use_container_width=True)
+
+# 📈 **Visualización Gráfica**
+if not df.empty:
+    st.subheader("📊 Gráfico de Datos")
+
+    numeric_columns = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    if numeric_columns:
+        x_axis = st.selectbox("📌 Selecciona el eje X:", numeric_columns)
+        y_axis = st.selectbox("📌 Selecciona el eje Y:", numeric_columns)
+        chart_type = st.radio("📊 Tipo de gráfico", ["Línea", "Barras", "Dispersión"])
+
+        if chart_type == "Línea":
+            st.line_chart(df[[x_axis, y_axis]].set_index(x_axis))
+        elif chart_type == "Barras":
+            st.bar_chart(df[[x_axis, y_axis]].set_index(x_axis))
+        elif chart_type == "Dispersión":
+            st.scatter_chart(df[[x_axis, y_axis]])
+    else:
+        st.warning("⚠️ No hay columnas numéricas para graficar.")
+
+# 📥 **Botón para exportar datos a Excel**
+st.subheader("📥 Descargar Datos")
+if st.button("Exportar a Excel"):
+    excel_path = f"{selected_table}.xlsx"
+    df.to_excel(excel_path, index=False)
+    with open(excel_path, "rb") as f:
+        st.download_button(label="📥 Descargar Archivo Excel", data=f, file_name=excel_path, mime="application/vnd.ms-excel")
