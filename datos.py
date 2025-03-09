@@ -1,92 +1,97 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
 import os
+import sqlite3
 
+# ------------------- CONFIGURACIÓN -------------------
 # Ruta del archivo Excel
 EXCEL_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.xlsx"
-DB_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.db"
+SQLITE_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.sqlite"
 
-# Crear base de datos si no existe
-def create_database():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS docentes (
-                      RFC TEXT PRIMARY KEY,
-                      CURP TEXT,
-                      Nombre TEXT,
-                      Apellido_Paterno TEXT,
-                      Apellido_Materno TEXT,
-                      Nivel_Educativo TEXT,
-                      Fecha_Ingreso_SEP TEXT)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS escuelas (
-                      ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                      RFC TEXT,
-                      Escuela TEXT,
-                      FOREIGN KEY (RFC) REFERENCES docentes(RFC))''')
-    conn.commit()
-    conn.close()
-
-# Cargar datos del Excel
+# ------------------- CARGAR O CREAR BASE DE DATOS -------------------
 def load_data():
     if os.path.exists(EXCEL_PATH):
-        df = pd.read_excel(EXCEL_PATH)
-        return df
+        return pd.read_excel(EXCEL_PATH)
     else:
+        st.error("⚠ No se encontró el archivo Excel en la ruta especificada.")
         return pd.DataFrame()
 
-def save_to_sqlite(df_docentes, df_escuelas):
-    conn = sqlite3.connect(DB_PATH)
-    df_docentes.to_sql("docentes", conn, if_exists="replace", index=False)
-    df_escuelas.to_sql("escuelas", conn, if_exists="replace", index=False)
+# ------------------- GUARDAR EN SQLITE -------------------
+def save_to_sqlite(df):
+    conn = sqlite3.connect(SQLITE_PATH)
+    df.to_sql("escuelas_docentes", conn, if_exists="replace", index=False)
     conn.close()
 
-def filter_data(df, search_term):
-    if search_term:
-        df = df[df.apply(lambda row: row.astype(str).str.contains(search_term, case=False, na=False).any(), axis=1)]
-    return df
-
-# Crear base de datos si no existe
-create_database()
-
-df_docentes = load_data()
-df_escuelas = pd.DataFrame(columns=["RFC", "Escuela"])
-
+# ------------------- INTERFAZ STREAMLIT -------------------
+st.set_page_config(page_title="Gestión de Escuelas y Docentes", layout="wide")
 st.title("📌 Gestión de Escuelas y Docentes")
 
-# Menú lateral
-menu = st.sidebar.radio("Selecciona una opción", ["📂 Ver Datos", "➕ Agregar Escuela", "🔍 Filtrar Información", "📤 Exportar Datos"])
+# 📂 Cargar archivo Excel
+df = load_data()
 
-if menu == "📂 Ver Datos":
-    st.subheader("📋 Lista de Docentes")
-    if not df_docentes.empty:
-        st.dataframe(df_docentes)
-    else:
-        st.warning("No se encontró el archivo Excel en la ruta especificada.")
+if not df.empty:
+    # Mostrar datos con AgGrid para filtros avanzados
+    st.dataframe(df)
 
-elif menu == "➕ Agregar Escuela":
-    st.subheader("🏫 Agregar Escuelas a un Docente")
-    rfc = st.text_input("Ingresa el RFC del docente")
-    escuela = st.text_input("Nombre de la escuela")
-    if st.button("Agregar"):
-        if rfc and escuela:
-            df_escuelas = df_escuelas.append({"RFC": rfc, "Escuela": escuela}, ignore_index=True)
-            st.success(f"Escuela '{escuela}' agregada al docente con RFC {rfc}.")
-        else:
-            st.error("Por favor ingresa todos los datos.")
-    st.dataframe(df_escuelas)
+    # ------------------- EDITAR DATOS -------------------
+    st.subheader("✏️ Modificar Datos")
 
-elif menu == "🔍 Filtrar Información":
-    st.subheader("🔎 Filtrar Docentes y Escuelas")
-    search = st.text_input("Buscar por RFC, CURP, Nombre o Escuela")
-    filtered_df = filter_data(df_docentes, search)
-    st.dataframe(filtered_df)
+    with st.form("form_edit"):
+        selected_index = st.number_input("Índice del registro a modificar", min_value=0, max_value=len(df)-1, step=1)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            rfc = st.text_input("RFC", value=str(df.loc[selected_index, "RFC"]) if len(df) > 0 else "")
+        with col2:
+            nombre = st.text_input("Nombre", value=str(df.loc[selected_index, "Nombre"]) if len(df) > 0 else "")
+        with col3:
+            escuela = st.text_input("Escuela", value=str(df.loc[selected_index, "Nivel_Educativo"]) if len(df) > 0 else "")
 
-elif menu == "📤 Exportar Datos":
-    st.subheader("📥 Exportar Datos en Diferentes Formatos")
-    if st.button("📂 Guardar en SQLite"):
-        save_to_sqlite(df_docentes, df_escuelas)
-        st.success("Datos guardados en SQLite correctamente.")
-    
-    st.download_button("📥 Descargar en Excel", df_docentes.to_csv(index=False), "docentes.xlsx")
-    st.download_button("📥 Descargar en CSV", df_docentes.to_csv(index=False), "docentes.csv")
+        submitted = st.form_submit_button("Actualizar Registro")
+        if submitted:
+            df.at[selected_index, "RFC"] = rfc
+            df.at[selected_index, "Nombre"] = nombre
+            df.at[selected_index, "Nivel_Educativo"] = escuela
+            st.success("✅ Registro actualizado correctamente.")
+            df.to_excel(EXCEL_PATH, index=False)
+            save_to_sqlite(df)
+
+    # ------------------- AGREGAR NUEVO REGISTRO -------------------
+    st.subheader("➕ Agregar Nueva Escuela")
+
+    with st.form("form_add"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            new_rfc = st.text_input("RFC Nuevo")
+        with col2:
+            new_nombre = st.text_input("Nombre Docente")
+        with col3:
+            new_escuela = st.text_input("Escuela")
+
+        add_submitted = st.form_submit_button("Agregar")
+        if add_submitted:
+            new_data = pd.DataFrame({"RFC": [new_rfc], "Nombre": [new_nombre], "Nivel_Educativo": [new_escuela]})
+            df = pd.concat([df, new_data], ignore_index=True)
+            df.to_excel(EXCEL_PATH, index=False)
+            save_to_sqlite(df)
+            st.success("✅ Nueva escuela agregada con éxito.")
+
+    # ------------------- DESCARGAR ARCHIVOS -------------------
+    st.subheader("📥 Descargar Datos")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button("📩 Descargar CSV", csv, "datos.csv", "text/csv")
+
+    with col2:
+        excel_bytes = df.to_excel("datos_temporales.xlsx", index=False)
+        with open("datos_temporales.xlsx", "rb") as f:
+            st.download_button("📩 Descargar Excel", f, "datos.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    with col3:
+        save_to_sqlite(df)
+        st.download_button("📩 Descargar SQLite", SQLITE_PATH, "datos.sqlite", "application/octet-stream")
+
+st.write("---")
+st.markdown("📌 **Desarrollado con Streamlit | Optimizado para gestión de docentes**")
