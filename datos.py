@@ -2,15 +2,21 @@ import streamlit as st
 import os
 import pandas as pd
 
-# 1️⃣ Crear la carpeta en Streamlit Cloud (si no existe)
+# 📂 Definir el directorio donde se guardará el archivo
 save_dir = "/mnt/data"
-os.makedirs(save_dir, exist_ok=True)  # Esto evita errores si la carpeta ya existe
+
+# 1️⃣ Verificar si la carpeta existe antes de intentar crearla
+if not os.path.exists(save_dir):
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+    except Exception as e:
+        st.error(f"❌ No se pudo crear el directorio: {str(e)}")
 
 # 2️⃣ Subir el archivo
 uploaded_file = st.file_uploader("📂 Sube tu archivo Excel", type=["xlsx"])
 
 if uploaded_file is not None:
-    # 3️⃣ Definir la ruta de guardado en /mnt/data
+    # 3️⃣ Ruta de guardado en /mnt/data
     file_path = os.path.join(save_dir, uploaded_file.name)
 
     try:
