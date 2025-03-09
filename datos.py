@@ -1,27 +1,23 @@
 import streamlit as st
 import pandas as pd
-import os
 import sqlite3
+import os
 
 # ------------------- CONFIGURACIÓN -------------------
-# Ruta del archivo Excel
 EXCEL_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.xlsx"
-SQLITE_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.sqlite"
+SQLITE_PATH = "datos.sqlite"  # Guardamos en la misma carpeta del script para evitar problemas de permisos
 
 st.set_page_config(page_title="Gestión de Escuelas y Docentes", layout="wide")
 st.title("📌 Gestión de Escuelas y Docentes")
 
 # ------------------- CARGA DE ARCHIVO -------------------
 def load_data():
-    # Verificar si el archivo existe en la ruta local
     if os.path.exists(EXCEL_PATH):
         return pd.read_excel(EXCEL_PATH)
     else:
-        # Permitir que el usuario suba el archivo manualmente
         st.warning("⚠ No se encontró el archivo Excel en la ruta especificada. Puedes subirlo manualmente.")
         uploaded_file = st.file_uploader("📂 Sube tu archivo Excel", type=["xlsx"])
         if uploaded_file is not None:
-            # Guardar el archivo en una ubicación temporal
             temp_path = "datos_temporal.xlsx"
             with open(temp_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
@@ -32,17 +28,46 @@ def load_data():
 
 # ------------------- GUARDAR EN SQLITE -------------------
 def save_to_sqlite(df):
-    conn = sqlite3.connect(SQLITE_PATH)
-    df.to_sql("escuelas_docentes", conn, if_exists="replace", index=False)
-    conn.close()
+    try:
+        conn = sqlite3.connect(SQLITE_PATH)
+        df.to_sql("escuelas_docentes", conn, if_exists="replace", index=False)
+        conn.close()
+        st.success("✅ Base de datos guardada correctamente en SQLite")
+    except Exception as e:
+        st.error(f"❌ Error al guardar en SQLite: {e}")
 
 # ------------------- INTERFAZ STREAMLIT -------------------
 df = load_data()
 
 if not df.empty:
+    # --- FILTROS AVANZADOS ---
+    st.sidebar.header("🔎 Filtros de búsqueda")
+    docente = st.sidebar.text_input("Buscar por nombre de docente:")
+    escuela = st.sidebar.text_input("Buscar por nombre de escuela:")
+
+    if docente:
+        df = df[df["Nombre"].str.contains(docente, case=False, na=False)]
+    if escuela:
+        df = df[df["Escuela"].str.contains(escuela, case=False, na=False)]
+
     st.dataframe(df)
 
-    # ------------------- DESCARGAR ARCHIVOS -------------------
+    # --- AGREGAR NUEVA ESCUELA ---
+    st.subheader("🏫 Agregar Nueva Escuela a un Docente")
+    with st.form("add_school_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            new_docente = st.selectbox("Selecciona un docente:", df["Nombre"].unique())
+        with col2:
+            new_escuela = st.text_input("Nombre de la nueva escuela:")
+        
+        submitted = st.form_submit_button("Agregar Escuela")
+        if submitted and new_escuela:
+            new_row = pd.DataFrame({"Nombre": [new_docente], "Escuela": [new_escuela]})
+            df = pd.concat([df, new_row], ignore_index=True)
+            st.success(f"✅ Escuela '{new_escuela}' agregada al docente {new_docente}")
+
+    # --- DESCARGAR ARCHIVOS ---
     st.subheader("📥 Descargar Datos")
     col1, col2, col3 = st.columns(3)
 
@@ -51,7 +76,7 @@ if not df.empty:
         st.download_button("📩 Descargar CSV", csv, "datos.csv", "text/csv")
 
     with col2:
-        excel_bytes = df.to_excel("datos_temporales.xlsx", index=False)
+        df.to_excel("datos_temporales.xlsx", index=False)
         with open("datos_temporales.xlsx", "rb") as f:
             st.download_button("📩 Descargar Excel", f, "datos.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
