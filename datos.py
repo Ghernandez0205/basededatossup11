@@ -2,61 +2,71 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import os
+from datetime import datetime
 
-# Ruta del archivo Excel y SQLite
-EXCEL_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.xlsx"
-SQLITE_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.sqlite"
+# Ruta de la base de datos SQLite
+DB_PATH = "C:\\Users\\sup11\\OneDrive\\Attachments\\Documentos\\Interfaces de phyton\\Base de datos\\datos.sqlite"
 
-# Cargar datos desde Excel o SQLite
+# Cargar la base de datos
+@st.cache_data
 def cargar_datos():
-    if os.path.exists(EXCEL_PATH):
-        return pd.read_excel(EXCEL_PATH)
-    else:
-        st.error("No se encontró el archivo Excel en la ruta especificada.")
-        return pd.DataFrame()
+    conn = sqlite3.connect(DB_PATH)
+    df_docentes = pd.read_sql("SELECT * FROM docentes", conn)
+    df_escuelas = pd.read_sql("SELECT * FROM escuelas", conn)
+    df_documentacion = pd.read_sql("SELECT * FROM documentacion", conn)
+    df_situaciones = pd.read_sql("SELECT * FROM situaciones", conn)
+    conn.close()
+    return df_docentes, df_escuelas, df_documentacion, df_situaciones
 
-def guardar_datos(df):
-    df.to_excel(EXCEL_PATH, index=False)
-    with sqlite3.connect(SQLITE_PATH) as conn:
-        df.to_sql("docentes", conn, if_exists="replace", index=False)
-    st.success("Datos guardados correctamente.")
+# Guardar datos en la base de datos
 
-# Cargar datos
-st.sidebar.title("Gestión de Docentes y Escuelas")
-opcion = st.sidebar.radio("Selecciona una opción", ["Lista de Docentes", "Gestión de Escuelas", "Seguimiento de Documentación", "Generación de Reportes"])
+def guardar_datos(df, tabla):
+    conn = sqlite3.connect(DB_PATH)
+    df.to_sql(tabla, conn, if_exists='replace', index=False)
+    conn.close()
+    st.success(f"Cambios guardados en la base de datos en la tabla {tabla}.")
 
-df = cargar_datos()
+# Interfaz
+st.title("📘 Gestión de Docentes y Escuelas")
+tabs = st.tabs(["📂 Documentación Inicial", "📋 Seguimiento de Documentación", "🚨 Situaciones Especiales", "📊 Generación de Reportes"])
 
-if opcion == "Lista de Docentes":
-    st.title("📚 Lista de Docentes")
-    st.dataframe(df)
+df_docentes, df_escuelas, df_documentacion, df_situaciones = cargar_datos()
 
-elif opcion == "Gestión de Escuelas":
-    st.title("🏫 Gestión de Escuelas")
-    docente = st.selectbox("Selecciona un docente:", df["Nombre"].dropna().unique())
-    escuela_nueva = st.text_input("Nombre de la nueva escuela:")
-    if st.button("Agregar Escuela"):
-        df.loc[df["Nombre"] == docente, "Escuela"] = df.loc[df["Nombre"] == docente, "Escuela"].astype(str) + ", " + escuela_nueva
-        guardar_datos(df)
-        st.success(f"Escuela '{escuela_nueva}' agregada al docente {docente}")
+# 📂 Documentación Inicial
+with tabs[0]:
+    st.header("📂 Documentación Inicial")
+    docente_seleccionado = st.selectbox("Selecciona un docente", df_docentes['Nombre'] + " " + df_docentes['Apellido_Paterno'] + " " + df_docentes['Apellido_Materno'])
+    docs = ['Hoja de Datos', 'Reanudación', 'Horarios', 'FUP', 'Talón de Pago', 'Solicitud Día Económico']
+    docs_entregados = st.multiselect("Selecciona los documentos entregados", docs)
+    if st.button("Guardar Documentación Inicial"):
+        df_documentacion = df_documentacion.append({"Docente": docente_seleccionado, "Documentos": ", ".join(docs_entregados), "Fecha_Entrega": datetime.now().strftime("%Y-%m-%d")}, ignore_index=True)
+        guardar_datos(df_documentacion, "documentacion")
 
-elif opcion == "Seguimiento de Documentación":
-    st.title("📌 Seguimiento de Documentación")
-    docente = st.selectbox("Selecciona un docente:", df["Nombre"].dropna().unique())
-    documentos = ["Hoja de Datos", "Reanudación", "Horarios", "FUP", "Talón de Pago", "Solicitud Día Económico"]
-    entregados = st.multiselect("Selecciona documentos entregados:", documentos)
-    if st.button("Guardar Documentación"):
-        df.loc[df["Nombre"] == docente, "Documentación"] = ", ".join(entregados)
-        guardar_datos(df)
-        st.success("Documentación guardada correctamente.")
+# 📋 Seguimiento de Documentación
+with tabs[1]:
+    st.header("📋 Seguimiento de Documentación")
+    docente_seguimiento = st.selectbox("Selecciona un docente", df_docentes['Nombre'] + " " + df_docentes['Apellido_Paterno'] + " " + df_docentes['Apellido_Materno'], key="seguimiento")
+    df_filtrado = df_documentacion[df_documentacion["Docente"] == docente_seguimiento]
+    st.dataframe(df_filtrado)
 
-elif opcion == "Generación de Reportes":
-    st.title("📊 Generación de Reportes")
-    columnas = st.multiselect("Selecciona qué columnas exportar", df.columns)
+# 🚨 Situaciones Especiales
+with tabs[2]:
+    st.header("🚨 Situaciones Especiales")
+    docentes_afectados = st.multiselect("Selecciona los docentes afectados", df_docentes['Nombre'] + " " + df_docentes['Apellido_Paterno'] + " " + df_docentes['Apellido_Materno'])
+    descripcion = st.text_area("Describe la situación especial")
+    if st.button("Guardar Situación Especial"):
+        for docente in docentes_afectados:
+            df_situaciones = df_situaciones.append({"Docente": docente, "Descripción": descripcion, "Fecha": datetime.now().strftime("%Y-%m-%d")}, ignore_index=True)
+        guardar_datos(df_situaciones, "situaciones")
+
+# 📊 Generación de Reportes
+with tabs[3]:
+    st.header("📊 Generación de Reportes")
+    columnas = st.multiselect("Selecciona qué columnas exportar", df_docentes.columns)
     if st.button("Exportar a Excel"):
-        df[columnas].to_excel("reporte.xlsx", index=False)
-        st.success("Reporte exportado a Excel.")
+        ruta_exportacion = os.path.join(os.getcwd(), "reporte_exportado.xlsx")
+        df_docentes[columnas].to_excel(ruta_exportacion, index=False)
+        st.success(f"Reporte guardado en: {ruta_exportacion}")
     if st.button("Exportar a SQLite"):
-        with sqlite3.connect(SQLITE_PATH) as conn:
-            df[columnas].to_sql("reportes", conn, if_exists="replace", index=False)
-        st.success("Reporte guardado en SQLite.")
+        guardar_datos(df_docentes[columnas], "reporte")
+
