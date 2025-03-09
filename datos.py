@@ -8,13 +8,27 @@ import sqlite3
 EXCEL_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.xlsx"
 SQLITE_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.sqlite"
 
-# ------------------- CARGAR O CREAR BASE DE DATOS -------------------
+st.set_page_config(page_title="Gestión de Escuelas y Docentes", layout="wide")
+st.title("📌 Gestión de Escuelas y Docentes")
+
+# ------------------- CARGA DE ARCHIVO -------------------
 def load_data():
+    # Verificar si el archivo existe en la ruta local
     if os.path.exists(EXCEL_PATH):
         return pd.read_excel(EXCEL_PATH)
     else:
-        st.error("⚠ No se encontró el archivo Excel en la ruta especificada.")
-        return pd.DataFrame()
+        # Permitir que el usuario suba el archivo manualmente
+        st.warning("⚠ No se encontró el archivo Excel en la ruta especificada. Puedes subirlo manualmente.")
+        uploaded_file = st.file_uploader("📂 Sube tu archivo Excel", type=["xlsx"])
+        if uploaded_file is not None:
+            # Guardar el archivo en una ubicación temporal
+            temp_path = "datos_temporal.xlsx"
+            with open(temp_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.success(f"✅ Archivo guardado en {temp_path}")
+            return pd.read_excel(temp_path)
+        else:
+            return pd.DataFrame()
 
 # ------------------- GUARDAR EN SQLITE -------------------
 def save_to_sqlite(df):
@@ -23,61 +37,13 @@ def save_to_sqlite(df):
     conn.close()
 
 # ------------------- INTERFAZ STREAMLIT -------------------
-st.set_page_config(page_title="Gestión de Escuelas y Docentes", layout="wide")
-st.title("📌 Gestión de Escuelas y Docentes")
-
-# 📂 Cargar archivo Excel
 df = load_data()
 
 if not df.empty:
-    # Mostrar datos con AgGrid para filtros avanzados
     st.dataframe(df)
-
-    # ------------------- EDITAR DATOS -------------------
-    st.subheader("✏️ Modificar Datos")
-
-    with st.form("form_edit"):
-        selected_index = st.number_input("Índice del registro a modificar", min_value=0, max_value=len(df)-1, step=1)
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            rfc = st.text_input("RFC", value=str(df.loc[selected_index, "RFC"]) if len(df) > 0 else "")
-        with col2:
-            nombre = st.text_input("Nombre", value=str(df.loc[selected_index, "Nombre"]) if len(df) > 0 else "")
-        with col3:
-            escuela = st.text_input("Escuela", value=str(df.loc[selected_index, "Nivel_Educativo"]) if len(df) > 0 else "")
-
-        submitted = st.form_submit_button("Actualizar Registro")
-        if submitted:
-            df.at[selected_index, "RFC"] = rfc
-            df.at[selected_index, "Nombre"] = nombre
-            df.at[selected_index, "Nivel_Educativo"] = escuela
-            st.success("✅ Registro actualizado correctamente.")
-            df.to_excel(EXCEL_PATH, index=False)
-            save_to_sqlite(df)
-
-    # ------------------- AGREGAR NUEVO REGISTRO -------------------
-    st.subheader("➕ Agregar Nueva Escuela")
-
-    with st.form("form_add"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            new_rfc = st.text_input("RFC Nuevo")
-        with col2:
-            new_nombre = st.text_input("Nombre Docente")
-        with col3:
-            new_escuela = st.text_input("Escuela")
-
-        add_submitted = st.form_submit_button("Agregar")
-        if add_submitted:
-            new_data = pd.DataFrame({"RFC": [new_rfc], "Nombre": [new_nombre], "Nivel_Educativo": [new_escuela]})
-            df = pd.concat([df, new_data], ignore_index=True)
-            df.to_excel(EXCEL_PATH, index=False)
-            save_to_sqlite(df)
-            st.success("✅ Nueva escuela agregada con éxito.")
 
     # ------------------- DESCARGAR ARCHIVOS -------------------
     st.subheader("📥 Descargar Datos")
-
     col1, col2, col3 = st.columns(3)
 
     with col1:
