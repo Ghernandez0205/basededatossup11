@@ -1,70 +1,33 @@
 import streamlit as st
-import pandas as pd
 import sqlite3
 import os
-from io import BytesIO
-from st_aggrid import AgGrid, GridOptionsBuilder
 
-# Ruta de la base de datos en Streamlit Cloud
+# 📌 Configurar la ruta donde se guardará la base de datos en Streamlit Cloud
 DB_PATH = "/mnt/data/datos.sqlite"
 
-# Verificar si el usuario subió una base de datos
-uploaded_file = st.file_uploader("📂 Sube la base de datos SQLite", type=["sqlite"])
+# 🎯 Título de la aplicación
+st.title("📂 Cargar Base de Datos")
+
+# 📤 Permitir que el usuario suba su base de datos SQLite
+uploaded_file = st.file_uploader("🔼 Sube tu base de datos SQLite (.sqlite)", type=["sqlite"])
 
 if uploaded_file:
-    DB_PATH = f"/mnt/data/{uploaded_file.name}"
     with open(DB_PATH, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    st.success(f"✅ Base de datos guardada como {uploaded_file.name}")
-
-# Si no hay base de datos, crear una nueva
-if not os.path.exists(DB_PATH):
-    st.warning("⚠️ No se encontró la base de datos. Se creará una nueva.")
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+        f.write(uploaded_file.getbuffer())  # Guardar el archivo en /mnt/data/
     
-    # Crear estructura de la base de datos si no existe
-    cursor.executescript("""
-    CREATE TABLE IF NOT EXISTS escuelas (
-        id_escuela INTEGER PRIMARY KEY AUTOINCREMENT,
-        Nombre_Escuela TEXT,
-        Director TEXT,
-        Direccion TEXT,
-        Zona_Escolar TEXT,
-        Sector TEXT
-    );
-    """)
-    conn.commit()
-    conn.close()
-    st.success("✅ Base de datos creada exitosamente.")
+    st.success(f"✅ Base de datos {uploaded_file.name} guardada correctamente.")
 
-# Conectar a la base de datos
-@st.cache_resource
-def get_connection():
+# 📡 Verificar si la base de datos existe antes de conectarse
+if os.path.exists(DB_PATH):
     try:
         conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        return conn
+        st.success("✅ Conectado exitosamente a la base de datos.")
     except sqlite3.OperationalError as e:
         st.error(f"❌ Error al conectar con la base de datos: {e}")
-        return None
-
-conn = get_connection()
-
-# Verificar si la conexión es válida
-if conn is None:
-    st.stop()
-
-# Función para verificar si una tabla existe
-def check_table_exists(table_name):
-    query = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';"
-    result = pd.read_sql(query, conn)
-    return not result.empty
-
-# Cargar datos de escuelas
-if check_table_exists("escuelas"):
-    escuelas_df = pd.read_sql("SELECT * FROM escuelas", conn)
-    if escuelas_df.empty:
-        st.warning("⚠️ No hay registros en la tabla 'escuelas'.")
 else:
-    escuelas_df = pd.DataFrame()
-    st.error("❌ La tabla 'escuelas' no existe en la base de datos.")
+    st.warning("⚠️ No se encontró ninguna base de datos. Sube un archivo para continuar.")
+
+# Mostrar el contenido de la carpeta donde se guarda la base de datos (para depuración)
+if st.checkbox("📁 Ver archivos en /mnt/data/"):
+    archivos = os.listdir("/mnt/data/")
+    st.write(archivos)
