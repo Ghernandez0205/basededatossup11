@@ -1,13 +1,29 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import matplotlib.pyplot as plt
-from io import BytesIO
 import os
+from io import BytesIO
 from st_aggrid import AgGrid, GridOptionsBuilder
 
-# Configurar la ruta de la base de datos normalizada
-DB_PATH = "/mnt/data/base_datos_29D_normalizada.sqlite"
+# Permitir que el usuario suba una base de datos manualmente
+uploaded_file = st.file_uploader("📂 Sube la base de datos SQLite", type=["sqlite"])
+
+# Definir la ruta de la base de datos
+DB_PATH = "/mnt/data/datos.sqlite"  # Ruta por defecto en Streamlit Cloud
+
+# Si el usuario sube un archivo, lo guardamos
+if uploaded_file:
+    DB_PATH = f"/mnt/data/{uploaded_file.name}"
+    with open(DB_PATH, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    st.success(f"✅ Base de datos guardada como {uploaded_file.name}")
+
+# Verificar si la base de datos existe antes de conectarse
+if not os.path.exists(DB_PATH):
+    st.error(f"❌ No se encontró la base de datos en la ruta: {DB_PATH}")
+    st.stop()
+else:
+    st.success(f"✅ Base de datos encontrada en: {DB_PATH}")
 
 # Conectar a la base de datos
 @st.cache_resource
