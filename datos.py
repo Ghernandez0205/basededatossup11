@@ -1,72 +1,133 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
 import os
-from datetime import datetime
 
-# Ruta de la base de datos SQLite
-DB_PATH = "C:\\Users\\sup11\\OneDrive\\Attachments\\Documentos\\Interfaces de phyton\\Base de datos\\datos.sqlite"
+# 📌 Ruta del archivo Excel (Usar `r""` para evitar problemas con caracteres especiales)
+EXCEL_PATH = r"C:\Users\sup11\OneDrive\Attachments\Documentos\Interfaces de phyton\Base de datos\datos.xlsx"
 
-# Cargar la base de datos
+# 📌 Cargar datos desde Excel
 @st.cache_data
 def cargar_datos():
-    conn = sqlite3.connect(DB_PATH)
-    df_docentes = pd.read_sql("SELECT * FROM docentes", conn)
-    df_escuelas = pd.read_sql("SELECT * FROM escuelas", conn)
-    df_documentacion = pd.read_sql("SELECT * FROM documentacion", conn)
-    df_situaciones = pd.read_sql("SELECT * FROM situaciones", conn)
-    conn.close()
-    return df_docentes, df_escuelas, df_documentacion, df_situaciones
+    """Carga los datos desde Excel en DataFrames."""
+    try:
+        df_docentes = pd.read_excel(EXCEL_PATH, sheet_name="docentes")
+        df_escuelas = pd.read_excel(EXCEL_PATH, sheet_name="escuelas")
+        df_documentacion = pd.read_excel(EXCEL_PATH, sheet_name="documentacion")
+        df_situaciones = pd.read_excel(EXCEL_PATH, sheet_name="situaciones_especiales")
 
-# Guardar datos en la base de datos
+        return df_docentes, df_escuelas, df_documentacion, df_situaciones
+    except Exception as e:
+        st.error(f"Error al cargar los datos: {e}")
+        return None, None, None, None
 
-def guardar_datos(df, tabla):
-    conn = sqlite3.connect(DB_PATH)
-    df.to_sql(tabla, conn, if_exists='replace', index=False)
-    conn.close()
-    st.success(f"Cambios guardados en la base de datos en la tabla {tabla}.")
+# 📌 Guardar datos en Excel
+def guardar_datos(df_docentes, df_escuelas, df_documentacion, df_situaciones):
+    """Guarda los cambios en el archivo Excel."""
+    try:
+        with pd.ExcelWriter(EXCEL_PATH, engine="openpyxl") as writer:
+            df_docentes.to_excel(writer, sheet_name="docentes", index=False)
+            df_escuelas.to_excel(writer, sheet_name="escuelas", index=False)
+            df_documentacion.to_excel(writer, sheet_name="documentacion", index=False)
+            df_situaciones.to_excel(writer, sheet_name="situaciones_especiales", index=False)
+        st.success("✅ Datos guardados correctamente en Excel.")
+    except Exception as e:
+        st.error(f"❌ Error al guardar los datos: {e}")
 
-# Interfaz
-st.title("📘 Gestión de Docentes y Escuelas")
-tabs = st.tabs(["📂 Documentación Inicial", "📋 Seguimiento de Documentación", "🚨 Situaciones Especiales", "📊 Generación de Reportes"])
+# 📌 Interfaz Principal
+st.title("📚 Gestión de Docentes y Escuelas")
 
+# 📌 Cargar los datos
 df_docentes, df_escuelas, df_documentacion, df_situaciones = cargar_datos()
 
-# 📂 Documentación Inicial
-with tabs[0]:
-    st.header("📂 Documentación Inicial")
-    docente_seleccionado = st.selectbox("Selecciona un docente", df_docentes['Nombre'] + " " + df_docentes['Apellido_Paterno'] + " " + df_docentes['Apellido_Materno'])
-    docs = ['Hoja de Datos', 'Reanudación', 'Horarios', 'FUP', 'Talón de Pago', 'Solicitud Día Económico']
-    docs_entregados = st.multiselect("Selecciona los documentos entregados", docs)
-    if st.button("Guardar Documentación Inicial"):
-        df_documentacion = df_documentacion.append({"Docente": docente_seleccionado, "Documentos": ", ".join(docs_entregados), "Fecha_Entrega": datetime.now().strftime("%Y-%m-%d")}, ignore_index=True)
-        guardar_datos(df_documentacion, "documentacion")
+# 📌 Seleccionar Vista
+opcion = st.sidebar.radio("📌 Selecciona una opción:", ["Docentes", "Escuelas", "Seguimiento de Documentación", "Situaciones Especiales", "Exportar Datos"])
 
-# 📋 Seguimiento de Documentación
-with tabs[1]:
-    st.header("📋 Seguimiento de Documentación")
-    docente_seguimiento = st.selectbox("Selecciona un docente", df_docentes['Nombre'] + " " + df_docentes['Apellido_Paterno'] + " " + df_docentes['Apellido_Materno'], key="seguimiento")
-    df_filtrado = df_documentacion[df_documentacion["Docente"] == docente_seguimiento]
-    st.dataframe(df_filtrado)
+## **🔹 Gestión de Docentes**
+if opcion == "Docentes":
+    st.subheader("👨‍🏫 Gestión de Docentes")
+    st.dataframe(df_docentes)
 
-# 🚨 Situaciones Especiales
-with tabs[2]:
-    st.header("🚨 Situaciones Especiales")
-    docentes_afectados = st.multiselect("Selecciona los docentes afectados", df_docentes['Nombre'] + " " + df_docentes['Apellido_Paterno'] + " " + df_docentes['Apellido_Materno'])
-    descripcion = st.text_area("Describe la situación especial")
-    if st.button("Guardar Situación Especial"):
-        for docente in docentes_afectados:
-            df_situaciones = df_situaciones.append({"Docente": docente, "Descripción": descripcion, "Fecha": datetime.now().strftime("%Y-%m-%d")}, ignore_index=True)
-        guardar_datos(df_situaciones, "situaciones")
+    # 📌 Agregar Nuevo Docente
+    with st.expander("➕ Agregar Docente"):
+        nuevo_nombre = st.text_input("Nombre del Docente")
+        nuevo_apellido = st.text_input("Apellido del Docente")
+        nuevo_rfc = st.text_input("RFC del Docente")
 
-# 📊 Generación de Reportes
-with tabs[3]:
-    st.header("📊 Generación de Reportes")
-    columnas = st.multiselect("Selecciona qué columnas exportar", df_docentes.columns)
-    if st.button("Exportar a Excel"):
-        ruta_exportacion = os.path.join(os.getcwd(), "reporte_exportado.xlsx")
-        df_docentes[columnas].to_excel(ruta_exportacion, index=False)
-        st.success(f"Reporte guardado en: {ruta_exportacion}")
-    if st.button("Exportar a SQLite"):
-        guardar_datos(df_docentes[columnas], "reporte")
+        if st.button("Guardar Docente"):
+            nuevo_docente = pd.DataFrame({"Nombre": [nuevo_nombre], "Apellido": [nuevo_apellido], "RFC": [nuevo_rfc]})
+            df_docentes = pd.concat([df_docentes, nuevo_docente], ignore_index=True)
+            guardar_datos(df_docentes, df_escuelas, df_documentacion, df_situaciones)
+
+    # 📌 Filtrar Docentes
+    filtro_rfc = st.text_input("🔍 Filtrar por RFC")
+    if filtro_rfc:
+        df_filtrado = df_docentes[df_docentes["RFC"].str.contains(filtro_rfc, case=False, na=False)]
+        st.dataframe(df_filtrado)
+
+## **🔹 Gestión de Escuelas**
+elif opcion == "Escuelas":
+    st.subheader("🏫 Gestión de Escuelas")
+    st.dataframe(df_escuelas)
+
+    # 📌 Agregar Nueva Escuela
+    with st.expander("➕ Agregar Escuela"):
+        nueva_escuela = st.text_input("Nombre de la Escuela")
+        nuevo_docente_asociado = st.selectbox("Docente Asociado", df_docentes["Nombre"])
+
+        if st.button("Guardar Escuela"):
+            nueva_fila = pd.DataFrame({"Escuela": [nueva_escuela], "Docente": [nuevo_docente_asociado]})
+            df_escuelas = pd.concat([df_escuelas, nueva_fila], ignore_index=True)
+            guardar_datos(df_docentes, df_escuelas, df_documentacion, df_situaciones)
+
+## **🔹 Seguimiento de Documentación**
+elif opcion == "Seguimiento de Documentación":
+    st.subheader("📜 Seguimiento de Documentación")
+
+    # 📌 Mostrar tabla con colores
+    def aplicar_colores(val):
+        if val == "Entregado":
+            return "background-color: green; color: white"
+        elif val == "Pendiente":
+            return "background-color: yellow"
+        elif val == "Faltante":
+            return "background-color: red; color: white"
+        return ""
+
+    st.dataframe(df_documentacion.style.applymap(aplicar_colores))
+
+## **🔹 Situaciones Especiales**
+elif opcion == "Situaciones Especiales":
+    st.subheader("⚠️ Registro de Situaciones Especiales")
+
+    # 📌 Agregar Nueva Situación
+    with st.expander("➕ Registrar Nueva Situación"):
+        docente_afectado = st.selectbox("Docente Afectado", df_docentes["Nombre"])
+        escuela_asociada = st.selectbox("Escuela Asociada", df_escuelas["Escuela"])
+        descripcion = st.text_area("Descripción de la Situación")
+
+        if st.button("Registrar Situación"):
+            nueva_fila = pd.DataFrame({"Docente": [docente_afectado], "Escuela": [escuela_asociada], "Situación": [descripcion]})
+            df_situaciones = pd.concat([df_situaciones, nueva_fila], ignore_index=True)
+            guardar_datos(df_docentes, df_escuelas, df_documentacion, df_situaciones)
+
+    # 📌 Mostrar Situaciones Registradas
+    st.dataframe(df_situaciones)
+
+## **🔹 Exportación de Datos**
+elif opcion == "Exportar Datos":
+    st.subheader("📤 Exportación de Datos")
+
+    # 📌 Descargar en Excel
+    excel_data = df_docentes.to_csv(index=False).encode('utf-8')
+    st.download_button(label="📥 Descargar Docentes en CSV", data=excel_data, file_name="docentes.csv", mime="text/csv")
+
+    # 📌 Descargar en SQLite
+    if st.button("📥 Guardar Base de Datos en SQLite"):
+        conn = sqlite3.connect("datos_exportados.sqlite")
+        df_docentes.to_sql("docentes", conn, if_exists="replace", index=False)
+        df_escuelas.to_sql("escuelas", conn, if_exists="replace", index=False)
+        df_documentacion.to_sql("documentacion", conn, if_exists="replace", index=False)
+        df_situaciones.to_sql("situaciones_especiales", conn, if_exists="replace", index=False)
+        conn.close()
+        st.success("✅ Datos guardados en SQLite con éxito.")
 
