@@ -5,7 +5,7 @@ import os
 
 # ------------------- CONFIGURACIÓN -------------------
 EXCEL_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.xlsx"
-SQLITE_PATH = "datos.sqlite"  # Guardamos en la misma carpeta del script para evitar problemas de permisos
+SQLITE_PATH = "datos.sqlite"  # Se guarda en la carpeta del script
 
 st.set_page_config(page_title="Gestión de Escuelas y Docentes", layout="wide")
 st.title("📌 Gestión de Escuelas y Docentes")
@@ -15,7 +15,7 @@ def load_data():
     if os.path.exists(EXCEL_PATH):
         return pd.read_excel(EXCEL_PATH)
     else:
-        st.warning("⚠ No se encontró el archivo Excel en la ruta especificada. Puedes subirlo manualmente.")
+        st.warning("⚠ No se encontró el archivo Excel en la ruta especificada.")
         uploaded_file = st.file_uploader("📂 Sube tu archivo Excel", type=["xlsx"])
         if uploaded_file is not None:
             temp_path = "datos_temporal.xlsx"
@@ -32,7 +32,7 @@ def save_to_sqlite(df):
         conn = sqlite3.connect(SQLITE_PATH)
         df.to_sql("escuelas_docentes", conn, if_exists="replace", index=False)
         conn.close()
-        st.success("✅ Base de datos guardada correctamente en SQLite")
+        st.success("✅ Base de datos guardada en SQLite")
     except Exception as e:
         st.error(f"❌ Error al guardar en SQLite: {e}")
 
@@ -42,14 +42,19 @@ df = load_data()
 if not df.empty:
     # --- FILTROS AVANZADOS ---
     st.sidebar.header("🔎 Filtros de búsqueda")
-    docente = st.sidebar.text_input("Buscar por nombre de docente:")
-    escuela = st.sidebar.text_input("Buscar por nombre de escuela:")
+    filtro_rfc = st.sidebar.text_input("🔍 Buscar por RFC:")
+    filtro_nombre = st.sidebar.text_input("🔍 Buscar por Nombre:")
+    filtro_escuela = st.sidebar.text_input("🏫 Buscar por Escuela:")
 
-    if docente:
-        df = df[df["Nombre"].str.contains(docente, case=False, na=False)]
-    if escuela:
-        df = df[df["Escuela"].str.contains(escuela, case=False, na=False)]
+    if filtro_rfc:
+        df = df[df["RFC"].str.contains(filtro_rfc, case=False, na=False)]
+    if filtro_nombre:
+        df = df[df["Nombre"].str.contains(filtro_nombre, case=False, na=False)]
+    if filtro_escuela:
+        df = df[df["Escuela"].str.contains(filtro_escuela, case=False, na=False)]
 
+    # --- TABLA CON DATOS ---
+    st.subheader("📋 Listado de Docentes y Escuelas")
     st.dataframe(df)
 
     # --- AGREGAR NUEVA ESCUELA ---
@@ -57,13 +62,15 @@ if not df.empty:
     with st.form("add_school_form"):
         col1, col2 = st.columns(2)
         with col1:
-            new_docente = st.selectbox("Selecciona un docente:", df["Nombre"].unique())
+            new_docente = st.selectbox("👨‍🏫 Selecciona un docente:", df["Nombre"].unique())
         with col2:
-            new_escuela = st.text_input("Nombre de la nueva escuela:")
+            new_escuela = st.text_input("🏫 Nombre de la nueva escuela:")
         
-        submitted = st.form_submit_button("Agregar Escuela")
+        submitted = st.form_submit_button("✅ Agregar Escuela")
         if submitted and new_escuela:
-            new_row = pd.DataFrame({"Nombre": [new_docente], "Escuela": [new_escuela]})
+            new_row = pd.DataFrame({"RFC": [df[df["Nombre"] == new_docente]["RFC"].values[0]],
+                                    "Nombre": [new_docente],
+                                    "Escuela": [new_escuela]})
             df = pd.concat([df, new_row], ignore_index=True)
             st.success(f"✅ Escuela '{new_escuela}' agregada al docente {new_docente}")
 
