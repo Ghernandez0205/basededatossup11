@@ -1,35 +1,32 @@
 import streamlit as st
 import sqlite3
 import os
+import tempfile
 
-# 📌 Directorio donde se guardará la base de datos
-DB_DIR = "/mnt/data"
-DB_PATH = os.path.join(DB_DIR, "datos.sqlite")
-
-# 🔹 Asegurar que el directorio de la base de datos existe
-if not os.path.exists(DB_DIR):
-    os.makedirs(DB_DIR)
-
-# 📤 Permitir que el usuario suba su base de datos
+# 📂 Subir base de datos sin escribir en disco
 uploaded_file = st.file_uploader("📂 Sube la base de datos SQLite", type=["sqlite"])
 
 if uploaded_file:
-    with open(DB_PATH, "wb") as f:
-        f.write(uploaded_file.getbuffer())  # Guardar el archivo en /mnt/data/
-    
-    st.success(f"✅ Base de datos guardada correctamente.")
-
-# 📡 Verificar si la base de datos existe antes de conectarse
-if os.path.exists(DB_PATH):
     try:
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        st.success("✅ Conectado exitosamente a la base de datos.")
-    except sqlite3.OperationalError as e:
-        st.error(f"❌ Error al conectar con la base de datos: {e}")
-else:
-    st.warning("⚠️ No se encontró ninguna base de datos. Sube un archivo para continuar.")
+        # 🔹 Crear un archivo temporal en la RAM
+        with tempfile.NamedTemporaryFile(delete=False) as temp_db:
+            temp_db.write(uploaded_file.getbuffer())  # Guardar en la memoria
+            temp_db_path = temp_db.name  # Obtener la ruta temporal
 
-# 📂 Mostrar el contenido de la carpeta (para depuración)
-if st.checkbox("📁 Ver archivos en /mnt/data/"):
-    archivos = os.listdir(DB_DIR)
-    st.write(archivos)
+        # 📡 Conectar a la base de datos temporal
+        conn = sqlite3.connect(temp_db_path, check_same_thread=False)
+        st.success("✅ Base de datos cargada correctamente.")
+
+        # 🔍 Opcional: Mostrar tablas existentes en la base de datos
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        if tables:
+            st.write("📌 Tablas en la base de datos:", [t[0] for t in tables])
+        else:
+            st.warning("⚠️ La base de datos no contiene tablas.")
+
+    except Exception as e:
+        st.error(f"❌ Error al abrir la base de datos: {e}")
+else:
+    st.warning("⚠️ Sube una base de datos para continuar.")
