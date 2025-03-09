@@ -1,56 +1,65 @@
-import streamlit as st
-import pandas as pd
-import sqlite3
 import os
+import sqlite3
+import streamlit as st
 
-# 📌 Ruta local de la base de datos
-DB_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.sqlite"
+# Definir la ruta de la base de datos dentro de Streamlit
+DB_PATH = "/mnt/data/datos.sqlite"
 
-# 📂 Verificar si la base de datos existe
+# Verificar si la base de datos existe
 if not os.path.exists(DB_PATH):
-    st.error("❌ No se encontró la base de datos en la ruta especificada.")
-    st.stop()  # Detiene la ejecución si no hay base de datos
+    st.warning("⚠️ No se encontró la base de datos. Creando una nueva...")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
 
-# 📊 Conectar a la base de datos
-@st.cache_resource
-def get_connection():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    # Crear las tablas necesarias
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS escuelas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        director TEXT,
+        direccion TEXT,
+        zona TEXT,
+        sector TEXT
+    )
+    """)
 
-conn = get_connection()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS personal_educativo (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        apellido TEXT,
+        cargo TEXT,
+        escuela_id INTEGER,
+        FOREIGN KEY (escuela_id) REFERENCES escuelas(id)
+    )
+    """)
 
-# 🔍 Función para obtener las tablas en la base de datos
-def get_tables():
-    query = "SELECT name FROM sqlite_master WHERE type='table';"
-    tables = pd.read_sql(query, conn)
-    return tables['name'].tolist()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS auditoria_cambios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tabla TEXT,
+        accion TEXT,
+        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
 
-# 📌 Obtener las tablas disponibles
-tables = get_tables()
+    conn.commit()
+    conn.close()
+    st.success("✅ Base de datos creada correctamente.")
 
-# 🎨 Interfaz Streamlit mejorada
-st.title("📌 Gestión de la Base de Datos")
-st.success("✅ Base de datos cargada correctamente.")
+# Conectar a la base de datos existente
+conn = sqlite3.connect(DB_PATH)
+st.success("✅ Conexión establecida con la base de datos.")
 
-# 📂 Mostrar tablas disponibles en la base de datos
-st.subheader("📑 Tablas disponibles:")
+# Mostrar las tablas disponibles
+st.subheader("📌 Tablas en la base de datos:")
+tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
+tables = [row[0] for row in conn.execute(tables_query)]
 st.write(tables)
 
-# 📊 Permitir seleccionar una tabla para ver los datos
-selected_table = st.selectbox("Selecciona una tabla para visualizar:", tables)
+# Cargar y mostrar datos de la tabla 'escuelas'
+st.subheader("🏫 Datos de la tabla 'escuelas':")
+df_escuelas = pd.read_sql("SELECT * FROM escuelas", conn)
+st.dataframe(df_escuelas)
 
-# 📥 Cargar y mostrar datos de la tabla seleccionada
-if selected_table:
-    query = f"SELECT * FROM {selected_table} LIMIT 50;"  # Limita a 50 registros
-    df = pd.read_sql(query, conn)
-    
-    if df.empty:
-        st.warning(f"⚠️ La tabla '{selected_table}' está vacía.")
-    else:
-        st.dataframe(df)
-
-# 📥 Agregar botón para descargar la base de datos
-st.subheader("📥 Descargar Base de Datos")
-with open(DB_PATH, "rb") as f:
-    db_bytes = f.read()
-
-st.download_button(label="Descargar Base de Datos", data=db_bytes, file_name="datos.sqlite", mime="application/octet-stream")
+conn.close()
