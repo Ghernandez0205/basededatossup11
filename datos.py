@@ -2,83 +2,84 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import os
-import matplotlib.pyplot as plt
+from io import BytesIO
 
-# Definir rutas
-EXCEL_PATH = r"C:\Users\sup11\OneDrive\Attachments\Documentos\Interfaces de phyton\Base de datos\datos.xlsx"
-SQLITE_PATH = r"C:\Users\sup11\OneDrive\Attachments\Documentos\Interfaces de phyton\Base de datos\datos.sqlite"
+# Ruta del archivo Excel local
+EXCEL_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.xlsx"
 
-# Cargar Excel automáticamente
-def load_excel():
-    if os.path.exists(EXCEL_PATH):
-        return pd.read_excel(EXCEL_PATH, sheet_name=None)
-    else:
-        st.error("❌ No se encontró el archivo Excel en la ruta especificada.")
-        return None
+# Verificar si el archivo Excel existe
+if not os.path.exists(EXCEL_PATH):
+    st.error("❌ No se encontró el archivo Excel en la ruta especificada.")
+    st.stop()
 
-# Guardar cambios en SQLite
-def save_to_sqlite(df_dict):
-    conn = sqlite3.connect(SQLITE_PATH)
-    for sheet_name, df in df_dict.items():
-        df.to_sql(sheet_name, conn, if_exists='replace', index=False)
-    conn.close()
+# Cargar el archivo Excel
+@st.cache_data
+def load_excel(file_path):
+    return pd.ExcelFile(file_path)
 
-# Cargar datos desde SQLite
-def load_from_sqlite():
-    conn = sqlite3.connect(SQLITE_PATH)
-    query = "SELECT name FROM sqlite_master WHERE type='table'"
-    tables = pd.read_sql(query, conn)['name'].tolist()
-    df_dict = {table: pd.read_sql(f"SELECT * FROM {table}", conn) for table in tables}
-    conn.close()
-    return df_dict
+excel_data = load_excel(EXCEL_PATH)
 
-# Configurar la interfaz
+# Lista de hojas disponibles en el archivo
+hojas = excel_data.sheet_names
+
+# Interfaz de Streamlit
 st.title("📌 Gestión de Escuelas y Docentes")
-st.sidebar.header("Opciones de Visualización")
-view_option = st.sidebar.radio("Selecciona una vista:", ["Tabla", "Gráficos", "Filtros Avanzados"])
+st.sidebar.header("📂 Opciones de visualización")
 
-# Cargar datos
-excel_data = load_excel()
-if excel_data:
-    save_to_sqlite(excel_data)  # Guardar en SQLite automáticamente
-    data = load_from_sqlite()  # Cargar desde SQLite
-    selected_table = st.sidebar.selectbox("Selecciona una tabla:", list(data.keys()))
-    df = data[selected_table]
+# Seleccionar la hoja de Excel a visualizar
+sheet_selected = st.sidebar.selectbox("Seleccionar Hoja", hojas)
 
-    if view_option == "Tabla":
-        st.subheader(f"📋 Datos de {selected_table}")
-        edited_df = st.data_editor(df, use_container_width=True)
-        if st.button("Guardar Cambios en SQLite"):
-            save_to_sqlite({selected_table: edited_df})
-            st.success("✅ Cambios guardados en SQLite")
+# Cargar datos de la hoja seleccionada
+df = pd.read_excel(EXCEL_PATH, sheet_name=sheet_selected)
 
-    elif view_option == "Gráficos":
-        st.subheader("📊 Análisis Gráfico")
-        column = st.selectbox("Selecciona una columna para visualizar:", df.columns)
-        fig, ax = plt.subplots()
-        df[column].value_counts().plot(kind='bar', ax=ax)
-        st.pyplot(fig)
+# Mostrar datos en Streamlit
+st.subheader(f"📊 Datos de la hoja: {sheet_selected}")
+st.dataframe(df, use_container_width=True)
 
-    elif view_option == "Filtros Avanzados":
-        st.subheader("🔍 Filtrar Datos")
-        filter_column = st.selectbox("Selecciona una columna para filtrar:", df.columns)
-        unique_values = df[filter_column].unique()
-        selected_value = st.selectbox("Selecciona un valor:", unique_values)
-        filtered_df = df[df[filter_column] == selected_value]
-        st.dataframe(filtered_df)
+# Función para agregar datos nuevos
+st.sidebar.subheader("➕ Agregar Nueva Entrada")
+cols = df.columns.tolist()
+new_data = {col: st.sidebar.text_input(f"Ingresar {col}") for col in cols}
 
-    # Opciones de descarga
-    st.sidebar.subheader("📥 Descargar Base de Datos")
-    if st.sidebar.button("Descargar Excel"):
-        excel_buffer = pd.ExcelWriter(EXCEL_PATH, engine='xlsxwriter')
-        for table, df in data.items():
-            df.to_excel(excel_buffer, sheet_name=table, index=False)
-        excel_buffer.close()
-        st.sidebar.download_button("Descargar Excel", open(EXCEL_PATH, "rb"), "datos_actualizados.xlsx")
+if st.sidebar.button("Agregar"):
+    new_row = pd.DataFrame([new_data])
+    df = pd.concat([df, new_row], ignore_index=True)
+    df.to_excel(EXCEL_PATH, sheet_name=sheet_selected, index=False)
+    st.success("✅ Nueva entrada agregada correctamente.")
+    st.rerun()
 
-    if st.sidebar.button("Descargar CSV"):
-        csv_buffer = df.to_csv(index=False).encode("utf-8")
-        st.sidebar.download_button("Descargar CSV", csv_buffer, "datos_actualizados.csv", "text/csv")
+# Función para eliminar filas seleccionadas
+st.sidebar.subheader("❌ Eliminar Registros")
+selected_rows = st.multiselect("Seleccionar registros a eliminar", df.index)
 
-    if st.sidebar.button("Descargar SQLite"):
-        st.sidebar.download_button("Descargar SQLite", open(SQLITE_PATH, "rb"), "datos_actualizados.sqlite")
+if st.sidebar.button("Eliminar Seleccionados"):
+    df.drop(selected_rows, inplace=True)
+    df.to_excel(EXCEL_PATH, sheet_name=sheet_selected, index=False)
+    st.success("✅ Registros eliminados correctamente.")
+    st.rerun()
+
+# Función para descargar archivos en diferentes formatos
+st.subheader("📥 Descargar Base de Datos")
+formatos = ["Excel", "CSV", "SQLite"]
+formato = st.selectbox("Selecciona el formato de descarga", formatos)
+
+if st.button("Descargar"):
+    if formato == "Excel":
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, sheet_name="Datos", index=False)
+        output.seek(0)
+        st.download_button("📥 Descargar Excel", output, file_name="datos.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    elif formato == "CSV":
+        csv_data = df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Descargar CSV", csv_data, file_name="datos.csv", mime="text/csv")
+
+    elif formato == "SQLite":
+        db_path = "datos.sqlite"
+        conn = sqlite3.connect(db_path)
+        df.to_sql(sheet_selected, conn, if_exists="replace", index=False)
+        conn.close()
+        with open(db_path, "rb") as f:
+            st.download_button("📥 Descargar SQLite", f, file_name="datos.sqlite", mime="application/octet-stream")
+
