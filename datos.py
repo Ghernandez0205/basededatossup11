@@ -3,123 +3,60 @@ import pandas as pd
 import sqlite3
 import os
 
-# Ruta de la base de datos en OneDrive
+# Ruta del archivo Excel y SQLite
 EXCEL_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.xlsx"
 SQLITE_PATH = "C:/Users/sup11/OneDrive/Attachments/Documentos/Interfaces de phyton/Base de datos/datos.sqlite"
 
-def load_excel():
-    """Carga el archivo Excel y lo convierte en un DataFrame"""
-    try:
-        df = pd.read_excel(EXCEL_PATH)
-        return df
-    except Exception as e:
-        st.error(f"Error al cargar el archivo: {e}")
+# Cargar datos desde Excel o SQLite
+def cargar_datos():
+    if os.path.exists(EXCEL_PATH):
+        return pd.read_excel(EXCEL_PATH)
+    else:
+        st.error("No se encontró el archivo Excel en la ruta especificada.")
         return pd.DataFrame()
 
-def save_excel(df):
-    """Guarda los cambios en el archivo Excel"""
-    try:
-        df.to_excel(EXCEL_PATH, index=False)
-        st.success("📁 Archivo guardado exitosamente en OneDrive.")
-    except Exception as e:
-        st.error(f"Error al guardar el archivo: {e}")
-
-def connect_db():
-    """Conectar a la base de datos SQLite y crearla si no existe"""
-    conn = sqlite3.connect(SQLITE_PATH)
-    return conn
-
-def save_to_sqlite(df):
-    """Guardar los datos en SQLite"""
-    conn = connect_db()
-    df.to_sql("docentes", conn, if_exists="replace", index=False)
-    conn.close()
-    st.success("✅ Datos guardados en la base de datos SQLite")
-
-def check_special_characters(text):
-    """Verifica si el texto contiene caracteres especiales no permitidos"""
-    special_chars = "áéíóúÁÉÍÓÚñÑ"  # Se pueden agregar más
-    if any(char in special_chars for char in text):
-        return True
-    return False
-
-# Streamlit UI
-st.title("📚 Gestión de Docentes y Escuelas")
+def guardar_datos(df):
+    df.to_excel(EXCEL_PATH, index=False)
+    with sqlite3.connect(SQLITE_PATH) as conn:
+        df.to_sql("docentes", conn, if_exists="replace", index=False)
+    st.success("Datos guardados correctamente.")
 
 # Cargar datos
-df = load_excel()
+st.sidebar.title("Gestión de Docentes y Escuelas")
+opcion = st.sidebar.radio("Selecciona una opción", ["Lista de Docentes", "Gestión de Escuelas", "Seguimiento de Documentación", "Generación de Reportes"])
 
-# Barra lateral con opciones
-st.sidebar.header("Opciones")
-menu = st.sidebar.radio("Selecciona una sección", ["📄 Lista de Docentes", "🏫 Escuelas", "📑 Documentación", "📊 Reportes", "⚙ Configuración"])
+df = cargar_datos()
 
-if menu == "📄 Lista de Docentes":
-    st.header("📄 Lista de Docentes")
-    filtro_rfc = st.text_input("🔍 Buscar por RFC")
-    filtro_escuela = st.text_input("🏫 Buscar por Escuela")
-    
-    # Filtrado avanzado
-    if filtro_rfc:
-        df = df[df["RFC"].astype(str).str.contains(filtro_rfc, case=False, na=False)]
-    if filtro_escuela:
-        df = df[df["Escuela"].astype(str).str.contains(filtro_escuela, case=False, na=False)]
-    
+if opcion == "Lista de Docentes":
+    st.title("📚 Lista de Docentes")
     st.dataframe(df)
-    
-    # Opciones para agregar/borrar
-    if st.button("➕ Agregar Docente"):
-        with st.form("Nuevo Docente"):
-            nombre = st.text_input("Nombre Completo")
-            rfc = st.text_input("RFC")
-            escuela = st.text_input("Escuela")
-            clave = st.text_input("Clave Presupuestal")
-            enviar = st.form_submit_button("Guardar")
-            
-            if enviar:
-                if check_special_characters(nombre) or check_special_characters(escuela):
-                    st.warning("⚠️ Evita el uso de caracteres especiales como acentos o ñ.")
-                else:
-                    nuevo_dato = {"Nombre": nombre, "RFC": rfc, "Escuela": escuela, "Clave": clave}
-                    df = df.append(nuevo_dato, ignore_index=True)
-                    save_excel(df)
-    
-elif menu == "🏫 Escuelas":
-    st.header("🏫 Gestión de Escuelas")
-    
-    escuela_nueva = st.text_input("🏫 Nueva Escuela")
-    if st.button("➕ Agregar Escuela"):
-        if check_special_characters(escuela_nueva):
-            st.warning("⚠️ Evita el uso de caracteres especiales como acentos o ñ.")
-        else:
-            df["Escuela"].append(escuela_nueva)
-            save_excel(df)
 
-elif menu == "📑 Documentación":
-    st.header("📑 Seguimiento de Documentación")
-    doc_inicial = ["Hoja de Datos", "Reanudación", "Horarios"]
-    doc_adicional = ["FUP", "Talón de Pago", "Solicitud Día Económico"]
-    
-    for doc in doc_inicial:
-        df[doc] = st.checkbox(f"📌 {doc}")
-    for doc in doc_adicional:
-        df[doc] = st.checkbox(f"📌 {doc}")
-    
-    if st.button("💾 Guardar Documentación"):
-        save_excel(df)
+elif opcion == "Gestión de Escuelas":
+    st.title("🏫 Gestión de Escuelas")
+    docente = st.selectbox("Selecciona un docente:", df["Nombre"].dropna().unique())
+    escuela_nueva = st.text_input("Nombre de la nueva escuela:")
+    if st.button("Agregar Escuela"):
+        df.loc[df["Nombre"] == docente, "Escuela"] = df.loc[df["Nombre"] == docente, "Escuela"].astype(str) + ", " + escuela_nueva
+        guardar_datos(df)
+        st.success(f"Escuela '{escuela_nueva}' agregada al docente {docente}")
 
-elif menu == "📊 Reportes":
-    st.header("📊 Generación de Reportes")
-    
-    columnas = st.multiselect("📌 Selecciona qué columnas exportar", df.columns.tolist())
-    
-    if st.button("📥 Exportar a Excel"):
-        df[columnas].to_excel("Reporte.xlsx", index=False)
-        st.success("📁 Reporte generado correctamente")
-    if st.button("📥 Exportar a SQLite"):
-        save_to_sqlite(df)
+elif opcion == "Seguimiento de Documentación":
+    st.title("📌 Seguimiento de Documentación")
+    docente = st.selectbox("Selecciona un docente:", df["Nombre"].dropna().unique())
+    documentos = ["Hoja de Datos", "Reanudación", "Horarios", "FUP", "Talón de Pago", "Solicitud Día Económico"]
+    entregados = st.multiselect("Selecciona documentos entregados:", documentos)
+    if st.button("Guardar Documentación"):
+        df.loc[df["Nombre"] == docente, "Documentación"] = ", ".join(entregados)
+        guardar_datos(df)
+        st.success("Documentación guardada correctamente.")
 
-elif menu == "⚙ Configuración":
-    st.header("⚙ Configuración del Sistema")
-    if st.button("🔄 Recargar Base de Datos"):
-        df = load_excel()
-        st.success("🔄 Base de datos actualizada correctamente.")
+elif opcion == "Generación de Reportes":
+    st.title("📊 Generación de Reportes")
+    columnas = st.multiselect("Selecciona qué columnas exportar", df.columns)
+    if st.button("Exportar a Excel"):
+        df[columnas].to_excel("reporte.xlsx", index=False)
+        st.success("Reporte exportado a Excel.")
+    if st.button("Exportar a SQLite"):
+        with sqlite3.connect(SQLITE_PATH) as conn:
+            df[columnas].to_sql("reportes", conn, if_exists="replace", index=False)
+        st.success("Reporte guardado en SQLite.")
